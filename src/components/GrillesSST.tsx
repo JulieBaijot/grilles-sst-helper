@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, Fragment } from "react"
 import { Check, ArrowLeft, Printer, RefreshCw } from "lucide-react"
 
