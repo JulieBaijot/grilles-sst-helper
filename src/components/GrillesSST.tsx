@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, Fragment } from "react"
+import { useState, useEffect, useCallback, useRef, memo, Fragment } from "react"
 import { Check, ArrowLeft, Printer, RefreshCw } from "lucide-react"
 
 const SECTIONS = [
@@ -58,14 +58,23 @@ function mkSession(){ return { date:new Date().toISOString().split('T')[0], trai
 
 function tabLabel(s){ return [s.nom,s.prenom].filter(Boolean).join(' ') || `Stagiaire ${s._n}` }
 
+// ─── Styles module-level (référence stable pour React.memo) ───────────────
+const CBOX_COLORS = {
+  success:{ bg:'#C8E6C9', border:'#66BB6A', check:'#1B5E20' },
+  warning:{ bg:'#FFE0B2', border:'#FFA726', check:'#E65100' },
+  danger: { bg:'#FFCDD2', border:'#EF5350', check:'#B71C1C' },
+}
+const TD_TXT = { padding:'6px 10px', fontSize:12, color:'#1A1A2E', borderBottom:'0.5px solid #E5E7EB', verticalAlign:'middle', lineHeight:1.4 }
+const TD_CTR = { ...TD_TXT, textAlign:'center', width:38 }
+const TD_TXT_COMMENT = { ...TD_TXT, padding:'4px 8px' }
+const TD_CTR_LEFT = { ...TD_CTR, borderLeft:'0.5px solid #E5E7EB' }
+const TD_CTR_NOLEFT = { ...TD_CTR, borderLeft:'none' }
+const COMMENT_INPUT_STYLE = { width:'100%', fontSize:11, padding:'2px 5px', boxSizing:'border-box' }
+const NOTE_INPUT_STYLE = { width:32, textAlign:'center', fontSize:12, padding:'2px 4px' }
+
 // ─── Checkbox carré coloré ────────────────────────────────────────────────
-function CBox({ on, sem, onClick }){
-  const colors = {
-    success:{ bg:'#C8E6C9', border:'#66BB6A', check:'#1B5E20' },
-    warning:{ bg:'#FFE0B2', border:'#FFA726', check:'#E65100' },
-    danger: { bg:'#FFCDD2', border:'#EF5350', check:'#B71C1C' },
-  }
-  const c = colors[sem]
+const CBox = memo(function CBox({ on, sem, onClick }){
+  const c = CBOX_COLORS[sem]
   return (
     <div onClick={onClick} style={{
       width:20, height:20, borderRadius:4, margin:'0 auto', flexShrink:0,
@@ -76,10 +85,80 @@ function CBox({ on, sem, onClick }){
       {on && <Check size={11} color={c.check}/>}
     </div>
   )
-}
+})
 
-// ─── Grille ───────────────────────────────────────────────────────────────
-function Grille({ student, onUpd, onItem, onCC }){
+// ─── Ligne d'item (mémoïsée) ──────────────────────────────────────────────
+const Row = memo(function Row({ item, value, comment, idx, onSetV, onSetC }){
+  const bg = idx%2===0?'#F8F9FC':'#FFFFFF'
+  return (
+    <tr style={{background:bg}}>
+      <td style={TD_TXT}>{item.text}</td>
+      <td style={TD_CTR}><CBox on={value==='acquis'}     sem="success" onClick={()=>onSetV(item.id, value==='acquis'?null:'acquis')}/></td>
+      <td style={TD_CTR}><CBox on={value==='en_cours'}   sem="warning" onClick={()=>onSetV(item.id, value==='en_cours'?null:'en_cours')}/></td>
+      <td style={TD_CTR}><CBox on={value==='non_acquis'} sem="danger"  onClick={()=>onSetV(item.id, value==='non_acquis'?null:'non_acquis')}/></td>
+      <td style={TD_TXT_COMMENT}>
+        <input value={comment} onChange={e=>onSetC(item.id, e.target.value)} placeholder="Commentaire..." style={COMMENT_INPUT_STYLE}/>
+      </td>
+    </tr>
+  )
+})
+
+// ─── Ligne CC (mémoïsée) ──────────────────────────────────────────────────
+const CC_VALS = [['acquis','success'],['en_cours','warning'],['non_acquis','danger']]
+const CCRow = memo(function CCRow({ item, cc1Val, cc2Val, idx, onSetCC }){
+  const bg = idx%2===0?'#F8F9FC':'#FFFFFF'
+  return (
+    <tr style={{background:bg}}>
+      <td style={TD_TXT}>{item.text}</td>
+      {['cc1','cc2'].map(cc=>{
+        const cur = cc==='cc1'?cc1Val:cc2Val
+        return (
+          <Fragment key={cc}>
+            {CC_VALS.map(([val,sem])=>(
+              <td key={val} style={val==='acquis'?TD_CTR_LEFT:TD_CTR_NOLEFT}>
+                <CBox on={cur===val} sem={sem} onClick={()=>onSetCC(cc, item.id, cur===val?null:val)}/>
+              </td>
+            ))}
+          </Fragment>
+        )
+      })}
+    </tr>
+  )
+})
+
+// ─── Note input (mémoïsé pour Rôle/Juridique) ─────────────────────────────
+const NoteRow = memo(function NoteRow({ field, label, value, idx, onSetField }){
+  return (
+    <tr style={{background:idx%2===0?'#F8F9FC':'#FFFFFF'}}>
+      <td style={TD_TXT}>{label}</td>
+      <td style={{...TD_CTR, width:70}}>
+        <input value={value} onChange={e=>onSetField(field, e.target.value)} placeholder="—" style={NOTE_INPUT_STYLE}/>
+        <span style={{fontSize:10,color:'#6B7280'}}> /5</span>
+      </td>
+    </tr>
+  )
+})
+
+// ─── Grille (stable callbacks par student) ────────────────────────────────
+function Grille({ student, setStudents }){
+  const id = student.id
+
+  const onSetV = useCallback((itemId, val) => {
+    setStudents(p => p.map(s => s.id===id ? {...s, items:{...s.items, [itemId]:{...s.items[itemId], v: val}}} : s))
+  }, [id, setStudents])
+
+  const onSetC = useCallback((itemId, c) => {
+    setStudents(p => p.map(s => s.id===id ? {...s, items:{...s.items, [itemId]:{...s.items[itemId], c}}} : s))
+  }, [id, setStudents])
+
+  const onSetCC = useCallback((cc, itemId, val) => {
+    setStudents(p => p.map(s => s.id===id ? {...s, [cc]:{...s[cc], [itemId]: val}} : s))
+  }, [id, setStudents])
+
+  const onSetField = useCallback((field, val) => {
+    setStudents(p => p.map(s => s.id===id ? {...s, [field]: val} : s))
+  }, [id, setStudents])
+
   const th = (label, w, center) => (
     <th style={{
       background:'#185FA5', color:'#E6F1FB', padding:'5px 8px',
@@ -96,11 +175,6 @@ function Grille({ student, onUpd, onItem, onCC }){
       }}>{label}</td>
     </tr>
   )
-  const tdTxt = { padding:'6px 10px', fontSize:12, color:'#1A1A2E', borderBottom:'0.5px solid #E5E7EB', verticalAlign:'middle', lineHeight:1.4 }
-  const tdCtr = { ...tdTxt, textAlign:'center', width:38 }
-
-  const setV = (id, val, cur) => onItem(id,'v', cur===val ? null : val)
-  const setCCV = (cc, id, val, cur) => onCC(cc, id, cur===val ? null : val)
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -113,16 +187,8 @@ function Grille({ student, onUpd, onItem, onCC }){
             {th('Note /5',70,true)}
           </tr></thead>
           <tbody>
-            {[['note_role','Rôle du SST'],['note_juridique','Cadre juridique']].map(([f,lbl],i)=>(
-              <tr key={f} style={{background:i%2===0?'#F8F9FC':'#FFFFFF'}}>
-                <td style={tdTxt}>{lbl}</td>
-                <td style={{...tdCtr,width:70}}>
-                  <input value={student[f]} onChange={e=>onUpd(s=>({...s,[f]:e.target.value}))}
-                    placeholder="—" style={{width:32,textAlign:'center',fontSize:12,padding:'2px 4px'}} />
-                  <span style={{fontSize:10,color:'#6B7280'}}> /5</span>
-                </td>
-              </tr>
-            ))}
+            <NoteRow field="note_role"      label="Rôle du SST"     value={student.note_role}      idx={0} onSetField={onSetField}/>
+            <NoteRow field="note_juridique" label="Cadre juridique" value={student.note_juridique} idx={1} onSetField={onSetField}/>
           </tbody>
         </table>
       </div>
@@ -144,16 +210,7 @@ function Grille({ student, onUpd, onItem, onCC }){
                 {sec.items.map((item,idx)=>{
                   const d = student.items[item.id]||{v:null,c:''}
                   return (
-                    <tr key={item.id} style={{background:idx%2===0?'#F8F9FC':'#FFFFFF'}}>
-                      <td style={tdTxt}>{item.text}</td>
-                      <td style={tdCtr}><CBox on={d.v==='acquis'}     sem="success" onClick={()=>setV(item.id,'acquis',d.v)}     /></td>
-                      <td style={tdCtr}><CBox on={d.v==='en_cours'}   sem="warning" onClick={()=>setV(item.id,'en_cours',d.v)}   /></td>
-                      <td style={tdCtr}><CBox on={d.v==='non_acquis'} sem="danger"  onClick={()=>setV(item.id,'non_acquis',d.v)} /></td>
-                      <td style={{...tdTxt,padding:'4px 8px'}}>
-                        <input value={d.c} onChange={e=>onItem(item.id,'c',e.target.value)}
-                          placeholder="Commentaire..." style={{width:'100%',fontSize:11,padding:'2px 5px',boxSizing:'border-box'}} />
-                      </td>
-                    </tr>
+                    <Row key={item.id} item={item} value={d.v} comment={d.c} idx={idx} onSetV={onSetV} onSetC={onSetC}/>
                   )
                 })}
               </Fragment>
@@ -173,8 +230,8 @@ function Grille({ student, onUpd, onItem, onCC }){
               {['cc1','cc2'].map(cc=>(
                 <th key={cc} colSpan={3} style={{background:'#6B8EC0',color:'#E6F1FB',padding:'4px 8px',fontSize:10,fontWeight:500,textTransform:'uppercase',letterSpacing:0.3,textAlign:'center',borderLeft:'0.5px solid #8AAED0'}}>
                   {cc==='cc1'?'CC 1':'CC 2'}
-                  <input value={student[cc==='cc1'?'cc1_s':'cc2_s']||''} onChange={e=>onUpd(s=>({...s,[cc==='cc1'?'cc1_s':'cc2_s']:e.target.value}))}
-                    placeholder="S1–S8" style={{marginLeft:6,fontSize:10,padding:'1px 4px',width:60,borderRadius:3,border:'1px solid rgba(255,255,255,0.4)',background:'rgba(255,255,255,0.15)',color:'#E6F1FB'}} />
+                  <input value={student[cc==='cc1'?'cc1_s':'cc2_s']||''} onChange={e=>onSetField(cc==='cc1'?'cc1_s':'cc2_s', e.target.value)}
+                    placeholder="S1–S8" style={{marginLeft:6,fontSize:10,padding:'1px 4px',width:60,borderRadius:3,border:'1px solid rgba(255,255,255,0.4)',background:'rgba(255,255,255,0.15)',color:'#E6F1FB'}}/>
                 </th>
               ))}
             </tr>
@@ -187,7 +244,7 @@ function Grille({ student, onUpd, onItem, onCC }){
                     ['Non acquis','danger'],
                   ].map(([lbl,sem])=>(
                     <th key={lbl} style={{background:'#8AAED0',color:'#E6F1FB',padding:'3px 4px',fontSize:9,fontWeight:500,textTransform:'uppercase',textAlign:'center',width:38,borderLeft:'0.5px solid #8AAED0'}}>
-                      <CBox on={false} sem={sem} onClick={()=>{}} />
+                      <CBox on={false} sem={sem} onClick={()=>{}}/>
                       <div style={{marginTop:2,fontSize:8,letterSpacing:0.2}}>{lbl}</div>
                     </th>
                   ))}
@@ -197,18 +254,7 @@ function Grille({ student, onUpd, onItem, onCC }){
           </thead>
           <tbody>
             {CC_ITEMS.map((item,idx)=>(
-              <tr key={item.id} style={{background:idx%2===0?'#F8F9FC':'#FFFFFF'}}>
-                <td style={tdTxt}>{item.text}</td>
-                {['cc1','cc2'].map(cc=>(
-                  <Fragment key={cc}>
-                    {[['acquis','success'],['en_cours','warning'],['non_acquis','danger']].map(([val,sem])=>(
-                      <td key={val} style={{...tdCtr,borderLeft:val==='acquis'?'0.5px solid #E5E7EB':'none'}}>
-                        <CBox on={student[cc][item.id]===val} sem={sem} onClick={()=>setCCV(cc,item.id,val,student[cc][item.id])} />
-                      </td>
-                    ))}
-                  </Fragment>
-                ))}
-              </tr>
+              <CCRow key={item.id} item={item} cc1Val={student.cc1[item.id]} cc2Val={student.cc2[item.id]} idx={idx} onSetCC={onSetCC}/>
             ))}
           </tbody>
         </table>
@@ -331,6 +377,7 @@ export default function App(){
   const [ready,    setReady]    = useState(false)
   const [printing, setPrinting] = useState(false)
 
+  // Charge l'état initial
   useEffect(()=>{
     try{
       const raw=localStorage.getItem('sst-v3')
@@ -339,10 +386,28 @@ export default function App(){
     setReady(true)
   },[])
 
+  // Persistance débouncée (évite un JSON.stringify à chaque touche)
+  const latestRef = useRef({session,students,count})
+  latestRef.current = {session,students,count}
   useEffect(()=>{
     if(!ready) return
-    localStorage.setItem('sst-v3',JSON.stringify({session,students,count}))
+    const t = setTimeout(()=>{
+      try{ localStorage.setItem('sst-v3', JSON.stringify(latestRef.current)) }catch(e){}
+    }, 400)
+    return ()=>clearTimeout(t)
   },[session,students,count,ready])
+
+  // Flush synchrone au déchargement de la page
+  useEffect(()=>{
+    if(!ready) return
+    const flush = ()=>{ try{ localStorage.setItem('sst-v3', JSON.stringify(latestRef.current)) }catch(e){} }
+    window.addEventListener('beforeunload', flush)
+    document.addEventListener('visibilitychange', flush)
+    return ()=>{
+      window.removeEventListener('beforeunload', flush)
+      document.removeEventListener('visibilitychange', flush)
+    }
+  },[ready])
 
   const upd = (id,fn) => setStudents(p=>p.map(s=>s.id===id?fn(s):s))
   const student = students[tab]||null
@@ -404,7 +469,7 @@ export default function App(){
             )}
           </div>
 
-          {/* Infos stagiaire */}
+          {/* Infos stagiaire (actif) */}
           <div style={{padding:'8px 14px',background:'#F8F9FC',borderBottom:'0.5px solid #E5E7EB',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
             {[['nom','Nom',120],['prenom','Prénom',110],['entreprise','Entreprise',150]].map(([f,ph,w])=>(
               <input key={f} value={student[f]} onChange={e=>upd(student.id,s=>({...s,[f]:e.target.value}))}
@@ -422,15 +487,12 @@ export default function App(){
             </div>
           </div>
 
-          {/* Grille */}
-          <div style={{padding:'12px 14px'}}>
-            <Grille
-              student={student}
-              onUpd={fn=>upd(student.id,fn)}
-              onItem={(id,field,val)=>upd(student.id,s=>({...s,items:{...s.items,[id]:{...s.items[id],[field]:val}}}))}
-              onCC={(cc,id,val)=>upd(student.id,s=>({...s,[cc]:{...s[cc],[id]:val}}))}
-            />
-          </div>
+          {/* Grilles : toutes montées, seule l'active est visible (préserve le focus) */}
+          {students.map((s,i)=>(
+            <div key={s.id} style={{padding:'12px 14px', display: tab===i?'block':'none'}}>
+              <Grille student={s} setStudents={setStudents}/>
+            </div>
+          ))}
         </>
       )}
 
