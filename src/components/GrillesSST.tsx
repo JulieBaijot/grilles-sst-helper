@@ -432,49 +432,66 @@ export default function App(){
   return (
     <div>
       {/* Barre session */}
-      <div style={{background:'#185FA5',padding:'8px 14px',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-        <span style={{color:'#E6F1FB',fontWeight:500,fontSize:13,fontFamily:'system-ui,-apple-system,sans-serif',marginRight:4}}>Grilles SST</span>
-        <input type="date" value={session.date} onChange={e=>setSession(s=>({...s,date:e.target.value}))} style={{fontSize:11,padding:'3px 6px'}}/>
-        <input type="text"  value={session.trainer} onChange={e=>setSession(s=>({...s,trainer:e.target.value}))} placeholder="Formateur" style={{fontSize:11,padding:'3px 6px',width:130}}/>
-        <select value={session.modalite} onChange={e=>setSession(s=>({...s,modalite:e.target.value}))} style={{fontSize:11,padding:'3px 6px'}}>
-          <option value="FI">FI — Formation initiale</option>
-          <option value="MAC">MAC — Recyclage</option>
-        </select>
-        {students.length===0?(
-          <>
-            <select value={count} onChange={e=>setCount(parseInt(e.target.value))} style={{fontSize:11,padding:'3px 6px'}}>
-              {[4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} stagiaires</option>)}
+      {(() => {
+        const FF = 'system-ui,-apple-system,sans-serif'
+        const labelStyle: React.CSSProperties = {color:'#E6F1FB',fontSize:12,fontWeight:500,fontFamily:FF,display:'inline-flex',flexDirection:'column',gap:3}
+        const fieldStyle: React.CSSProperties = {fontSize:14,padding:'6px 10px',background:'#fff',color:'#0F2A44',border:'1px solid rgba(255,255,255,0.4)',borderRadius:4,fontFamily:FF,lineHeight:1.2}
+        return (
+        <div style={{background:'#185FA5',padding:'12px 18px',display:'flex',alignItems:'flex-end',gap:14,flexWrap:'wrap'}}>
+          <span style={{color:'#fff',fontWeight:600,fontSize:18,fontFamily:FF,marginRight:8,letterSpacing:0.2}}>Grilles SST</span>
+          <label style={labelStyle}>Date
+            <input type="date" value={session.date} onChange={e=>setSession(s=>({...s,date:e.target.value}))} style={fieldStyle}/>
+          </label>
+          <label style={labelStyle}>Formateur
+            <input type="text" value={session.trainer} onChange={e=>setSession(s=>({...s,trainer:e.target.value}))} placeholder="Nom du formateur" style={{...fieldStyle,width:170}}/>
+          </label>
+          <label style={labelStyle}>Modalité
+            <select value={session.modalite} onChange={e=>setSession(s=>({...s,modalite:e.target.value}))} style={fieldStyle}>
+              <option value="FI">FI — Formation initiale</option>
+              <option value="MAC">MAC — Recyclage</option>
             </select>
-            <button onClick={()=>{setStudents(Array.from({length:count},(_,i)=>mkStudent(`s${Date.now()}_${i}`,i+1)));setTab(0)}}
-              disabled={!session.trainer}
-              style={{background:session.trainer?'#D9BB5F':'rgba(255,255,255,0.2)',color:session.trainer?'#4A3800':'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 10px',fontSize:11,fontWeight:500,cursor:session.trainer?'pointer':'default',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-              Démarrer
-            </button>
-          </>
-        ):(
-          <>
-          <button onClick={save} disabled={!dirty}
-            title="Enregistrer (Ctrl+S)"
-            style={{background:dirty?'#D9BB5F':'rgba(255,255,255,0.15)',color:dirty?'#4A3800':'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 10px',fontSize:11,fontWeight:500,cursor:dirty?'pointer':'default',marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:4,fontFamily:'system-ui,-apple-system,sans-serif'}}>
-            <Save size={13}/> {dirty ? 'Enregistrer' : 'Enregistré'}
-          </button>
-          <span style={{color:'#E6F1FB',fontSize:10,opacity:0.85,fontFamily:'system-ui,-apple-system,sans-serif'}}>
-            {dirty ? '● Modifications non enregistrées' : (savedLabel ? `Enregistré à ${savedLabel}` : '')}
-          </span>
-          <button onClick={()=>{
-            if(confirm('Réinitialiser toute la session ? Les évaluations de tous les stagiaires seront effacées.')){
-              const fresh=mkSession()
-              setSession(fresh); setStudents([]); setCount(4); setTab(0); setSavedAt(null)
-              localStorage.setItem('sst-v3',JSON.stringify({session:fresh,students:[],count:4}))
-              setDirty(false)
-            }
-          }}
-            style={{background:'rgba(255,255,255,0.15)',color:'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 8px',fontSize:10,cursor:'pointer',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-            <RefreshCw size={14}/> Nouvelle session
-          </button>
-          </>
-        )}
-      </div>
+          </label>
+          {students.length===0?(
+            <>
+              <label style={labelStyle}>Effectif
+                <select value={count} onChange={e=>setCount(parseInt(e.target.value))} style={fieldStyle}>
+                  {[4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} stagiaires</option>)}
+                </select>
+              </label>
+              <button onClick={()=>{setStudents(Array.from({length:count},(_,i)=>mkStudent(`s${Date.now()}_${i}`,i+1)));setTab(0)}}
+                disabled={!session.trainer}
+                style={{background:session.trainer?'#D9BB5F':'rgba(255,255,255,0.2)',color:session.trainer?'#4A3800':'#E6F1FB',border:'none',borderRadius:4,padding:'8px 16px',fontSize:14,fontWeight:600,cursor:session.trainer?'pointer':'default',fontFamily:FF}}>
+                Démarrer
+              </button>
+            </>
+          ):(
+            <>
+            <div style={{marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:10}}>
+              <span style={{color:'#E6F1FB',fontSize:12,fontFamily:FF}}>
+                {dirty ? '● Modifications non enregistrées' : (savedLabel ? `Enregistré à ${savedLabel}` : '')}
+              </span>
+              <button onClick={save} disabled={!dirty}
+                title="Enregistrer (Ctrl+S)"
+                style={{background:dirty?'#D9BB5F':'rgba(255,255,255,0.15)',color:dirty?'#4A3800':'#E6F1FB',border:'none',borderRadius:4,padding:'8px 14px',fontSize:13,fontWeight:600,cursor:dirty?'pointer':'default',display:'inline-flex',alignItems:'center',gap:6,fontFamily:FF}}>
+                <Save size={15}/> {dirty ? 'Enregistrer' : 'Enregistré'}
+              </button>
+              <button onClick={()=>{
+                if(confirm('Réinitialiser toute la session ? Les évaluations de tous les stagiaires seront effacées.')){
+                  const fresh=mkSession()
+                  setSession(fresh); setStudents([]); setCount(4); setTab(0); setSavedAt(null)
+                  localStorage.setItem('sst-v3',JSON.stringify({session:fresh,students:[],count:4}))
+                  setDirty(false)
+                }
+              }}
+                style={{background:'rgba(255,255,255,0.15)',color:'#fff',border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,padding:'8px 12px',fontSize:13,cursor:'pointer',fontFamily:FF,display:'inline-flex',alignItems:'center',gap:6}}>
+                <RefreshCw size={15}/> Nouvelle session
+              </button>
+            </div>
+            </>
+          )}
+        </div>
+        )
+      })()}
 
       {students.length>0&&student&&(
         <>
