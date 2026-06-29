@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback, useRef, memo, Fragment } from "react"
-import { Check, ArrowLeft, Printer, RefreshCw } from "lucide-react"
+import { Check, ArrowLeft, Printer, RefreshCw, Save } from "lucide-react"
 
 const SECTIONS = [
   { id:'prev', title:'Prévention', items:[
@@ -376,38 +376,52 @@ export default function App(){
   const [count,    setCount]    = useState(4)
   const [ready,    setReady]    = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [dirty,    setDirty]    = useState(false)
+  const [savedAt,  setSavedAt]  = useState(null)
 
   // Charge l'état initial
   useEffect(()=>{
     try{
       const raw=localStorage.getItem('sst-v3')
-      if(raw){const d=JSON.parse(raw);setSession(d.session);setStudents(d.students);setCount(d.count||4)}
+      if(raw){const d=JSON.parse(raw);setSession(d.session);setStudents(d.students);setCount(d.count||4);if(d.savedAt)setSavedAt(d.savedAt)}
     }catch(e){}
     setReady(true)
   },[])
 
-  // Persistance débouncée (évite un JSON.stringify à chaque touche)
-  const latestRef = useRef({session,students,count})
-  latestRef.current = {session,students,count}
-  useEffect(()=>{
-    if(!ready) return
-    const t = setTimeout(()=>{
-      try{ localStorage.setItem('sst-v3', JSON.stringify(latestRef.current)) }catch(e){}
-    }, 400)
-    return ()=>clearTimeout(t)
-  },[session,students,count,ready])
+  // Garde toujours l'état le plus récent en mémoire
+  const latestRef = useRef({session,students,count,savedAt})
+  latestRef.current = {session,students,count,savedAt}
 
-  // Flush synchrone au déchargement de la page
+  // Marque "modifié" dès qu'une donnée change
+  useEffect(()=>{ if(ready) setDirty(true) },[session,students,count])
+
+  // Sauvegarde manuelle
+  const save = useCallback(()=>{
+    const now = new Date().toISOString()
+    try{
+      localStorage.setItem('sst-v3', JSON.stringify({...latestRef.current, savedAt: now}))
+      setSavedAt(now); setDirty(false)
+    }catch(e){}
+  },[])
+
+  // Avertir avant de quitter si modifications non enregistrées
   useEffect(()=>{
-    if(!ready) return
-    const flush = ()=>{ try{ localStorage.setItem('sst-v3', JSON.stringify(latestRef.current)) }catch(e){} }
-    window.addEventListener('beforeunload', flush)
-    document.addEventListener('visibilitychange', flush)
-    return ()=>{
-      window.removeEventListener('beforeunload', flush)
-      document.removeEventListener('visibilitychange', flush)
+    if(!dirty) return
+    const h = (e)=>{ e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h)
+    return ()=>window.removeEventListener('beforeunload', h)
+  },[dirty])
+
+  // Raccourci Ctrl/Cmd+S
+  useEffect(()=>{
+    const h = (e)=>{
+      if((e.ctrlKey||e.metaKey) && e.key==='s'){ e.preventDefault(); save() }
     }
-  },[ready])
+    window.addEventListener('keydown', h)
+    return ()=>window.removeEventListener('keydown', h)
+  },[save])
+
+  const savedLabel = savedAt ? new Date(savedAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : null
 
   const upd = (id,fn) => setStudents(p=>p.map(s=>s.id===id?fn(s):s))
   const student = students[tab]||null
@@ -438,16 +452,27 @@ export default function App(){
             </button>
           </>
         ):(
+          <>
+          <button onClick={save} disabled={!dirty}
+            title="Enregistrer (Ctrl+S)"
+            style={{background:dirty?'#D9BB5F':'rgba(255,255,255,0.15)',color:dirty?'#4A3800':'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 10px',fontSize:11,fontWeight:500,cursor:dirty?'pointer':'default',marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:4,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+            <Save size={13}/> {dirty ? 'Enregistrer' : 'Enregistré'}
+          </button>
+          <span style={{color:'#E6F1FB',fontSize:10,opacity:0.85,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+            {dirty ? '● Modifications non enregistrées' : (savedLabel ? `Enregistré à ${savedLabel}` : '')}
+          </span>
           <button onClick={()=>{
             if(confirm('Réinitialiser toute la session ? Les évaluations de tous les stagiaires seront effacées.')){
               const fresh=mkSession()
-              setSession(fresh); setStudents([]); setCount(4); setTab(0)
+              setSession(fresh); setStudents([]); setCount(4); setTab(0); setSavedAt(null)
               localStorage.setItem('sst-v3',JSON.stringify({session:fresh,students:[],count:4}))
+              setDirty(false)
             }
           }}
-            style={{background:'rgba(255,255,255,0.15)',color:'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 8px',fontSize:10,cursor:'pointer',marginLeft:'auto',fontFamily:'system-ui,-apple-system,sans-serif'}}>
+            style={{background:'rgba(255,255,255,0.15)',color:'#E6F1FB',border:'none',borderRadius:'4px',padding:'5px 8px',fontSize:10,cursor:'pointer',fontFamily:'system-ui,-apple-system,sans-serif'}}>
             <RefreshCw size={14}/> Nouvelle session
           </button>
+          </>
         )}
       </div>
 
