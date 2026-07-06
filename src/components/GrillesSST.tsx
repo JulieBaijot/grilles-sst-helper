@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, memo, Fragment } from "react"
 import { Check, ArrowLeft, Printer, RefreshCw, Save } from "lucide-react"
 
-const SECTIONS = [
+const SECTIONS_FI = [
   { id:'prev', title:'Prévention', items:[
     { id:'prv1', text:"A su repérer une situation dangereuse" },
     { id:'prv2', text:"A su faire une remontée d'information factuelle en respectant les procédures de l'entreprise" },
@@ -25,6 +25,27 @@ const SECTIONS = [
   ]},
 ]
 
+const SECTIONS_MAC = [
+  { id:'prev', title:'Prévention', items:[
+    { id:'prv1', text:"A su repérer une situation dangereuse" },
+    { id:'prv4', text:"A su faire une remontée d'information factuelle et proposer une action de prévention adaptée" },
+  ]},
+  { id:'prot', title:'Protéger', items:[
+    { id:'prt1', text:"A su mettre en œuvre une action de protection adaptée à la situation" },
+    { id:'prt2', text:"A su effectuer un dégagement d'urgence par traction de la victime" },
+  ]},
+  { id:'exam', title:'Examiner', items:[
+    { id:'exm1', text:"A su conduire le bilan de la victime dans le bon ordre (conscience → VVA → respiration)" },
+    { id:'exm2', text:"A su identifier la présence d'une urgence vitale" },
+  ]},
+  { id:'alt', title:'Faire alerter', items:[
+    { id:'alt1', text:"A su délivrer un message complet assurant l'arrivée des secours au plus près" },
+  ]},
+  { id:'sec', title:'Secourir', items:[
+    { id:'sec1', text:"A maintenu la maîtrise de ses gestes de secours" },
+  ]},
+]
+
 const CC_ITEMS = [
   { id:'cr1',  text:"A repéré le(s) danger(s) persistant(s)" },
   { id:'cr2',  text:"A su protéger" },
@@ -39,7 +60,10 @@ const CC_ITEMS = [
   { id:'cr11', text:"Hiérarchise la meilleure solution" },
 ]
 
-const ALL_IDS = SECTIONS.flatMap(s => s.items.map(i => i.id))
+const ALL_IDS = Array.from(new Set([
+  ...SECTIONS_FI.flatMap(s => s.items.map(i => i.id)),
+  ...SECTIONS_MAC.flatMap(s => s.items.map(i => i.id)),
+]))
 const CC_IDS  = CC_ITEMS.map(i => i.id)
 const E3_LBL  = { acquis:'Acquis', en_cours:'En cours', non_acquis:'Non acquis' }
 
@@ -47,6 +71,7 @@ function mkStudent(sid, n) {
   return {
     id:sid, nom:'', prenom:'', entreprise:'',
     note_role:'', note_juridique:'',
+    actu_ok: null,
     _n: n,
     items: Object.fromEntries(ALL_IDS.map(k=>[k,{v:null,c:''}])),
     cc1_s:'', cc2_s:'',
@@ -140,8 +165,9 @@ const NoteRow = memo(function NoteRow({ field, label, value, idx, onSetField }){
 })
 
 // ─── Grille (stable callbacks par student) ────────────────────────────────
-function Grille({ student, setStudents }){
+function Grille({ student, setStudents, modalite }){
   const id = student.id
+  const SECTIONS = modalite==='MAC' ? SECTIONS_MAC : SECTIONS_FI
 
   const onSetV = useCallback((itemId, val) => {
     setStudents(p => p.map(s => s.id===id ? {...s, items:{...s.items, [itemId]:{...s.items[itemId], v: val}}} : s))
@@ -181,16 +207,33 @@ function Grille({ student, setStudents }){
 
       {/* ── Évaluations théoriques ── */}
       <div style={{border:'0.5px solid #E5E7EB',borderRadius:'8px',overflow:'hidden'}}>
-        <table style={{width:'100%',borderCollapse:'collapse'}}>
-          <thead><tr>
-            {th('Évaluations théoriques — questionnaires','',false)}
-            {th('Note /5',70,true)}
-          </tr></thead>
-          <tbody>
-            <NoteRow field="note_role"      label="Rôle du SST"     value={student.note_role}      idx={0} onSetField={onSetField}/>
-            <NoteRow field="note_juridique" label="Cadre juridique" value={student.note_juridique} idx={1} onSetField={onSetField}/>
-          </tbody>
-        </table>
+        {modalite==='FI' ? (
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>
+              {th('Évaluations théoriques — questionnaires','',false)}
+              {th('Note /5',70,true)}
+            </tr></thead>
+            <tbody>
+              <NoteRow field="note_role"      label="Rôle du SST"     value={student.note_role}      idx={0} onSetField={onSetField}/>
+              <NoteRow field="note_juridique" label="Cadre juridique" value={student.note_juridique} idx={1} onSetField={onSetField}/>
+            </tbody>
+          </table>
+        ) : (
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>
+              {th('Actualisation des connaissances','',false)}
+              {th('Acquis',50,true)}
+              {th('Non acquis',75,true)}
+            </tr></thead>
+            <tbody>
+              <tr style={{background:'#F8F9FC'}}>
+                <td style={TD_TXT}>Actualisation des connaissances validée</td>
+                <td style={TD_CTR}><CBox on={student.actu_ok==='acquis'}     sem="success" onClick={()=>onSetField('actu_ok', student.actu_ok==='acquis'?null:'acquis')}/></td>
+                <td style={TD_CTR}><CBox on={student.actu_ok==='non_acquis'} sem="danger"  onClick={()=>onSetField('actu_ok', student.actu_ok==='non_acquis'?null:'non_acquis')}/></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* ── Compétences ── */}
@@ -265,6 +308,7 @@ function Grille({ student, setStudents }){
 
 // ─── Vue impression ───────────────────────────────────────────────────────
 function PrintView({ student, session, onBack }){
+  const SECTIONS = session.modalite==='MAC' ? SECTIONS_MAC : SECTIONS_FI
   const td  = {border:'0.5px solid #DDE3EE',padding:'4px 8px',fontSize:11,fontFamily:'Arial',verticalAlign:'middle'}
   const bg3 = v => v==='acquis'?'#C8E6C9':v==='en_cours'?'#FFE0B2':v==='non_acquis'?'#FFCDD2':'#F5F5F5'
   const l3  = v => v ? E3_LBL[v] : '—'
@@ -299,13 +343,26 @@ function PrintView({ student, session, onBack }){
             <th style={{...td,background:'#185FA5',color:'#E6F1FB',textAlign:'left'}}>Commentaire</th>
           </tr></thead>
           <tbody>
-            <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Évaluations théoriques</td></tr>
-            {[['Rôle du SST',student.note_role],['Cadre juridique',student.note_juridique]].map(([lbl,note],i)=>(
-              <tr key={lbl} style={{background:i%2===0?'#F8F9FC':'#FFF'}}>
-                <td style={td}>{lbl}</td><td style={{...td,textAlign:'center'}}>{note||'—'}/5</td>
-                <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
-              </tr>
-            ))}
+            {session.modalite==='FI' ? (
+              <>
+                <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Évaluations théoriques</td></tr>
+                {[['Rôle du SST',student.note_role],['Cadre juridique',student.note_juridique]].map(([lbl,note],i)=>(
+                  <tr key={lbl} style={{background:i%2===0?'#F8F9FC':'#FFF'}}>
+                    <td style={td}>{lbl}</td><td style={{...td,textAlign:'center'}}>{note||'—'}/5</td>
+                    <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
+                  </tr>
+                ))}
+              </>
+            ) : (
+              <>
+                <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Actualisation des connaissances</td></tr>
+                <tr style={{background:'#F8F9FC'}}>
+                  <td style={td}>Actualisation des connaissances validée</td>
+                  <td style={{...td,textAlign:'center',background:bg3(student.actu_ok)}}>{student.actu_ok==='acquis'?'✓':student.actu_ok==='non_acquis'?'✗':'—'}</td>
+                  <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
+                </tr>
+              </>
+            )}
             {SECTIONS.map(sec=>(
               <Fragment key={sec.id}>
                 <tr><td colSpan={6} style={{...td,background:'#6B8EC0',color:'#E6F1FB',fontWeight:'bold'}}>{sec.title}</td></tr>
@@ -532,7 +589,7 @@ export default function App(){
           {/* Grilles : toutes montées, seule l'active est visible (préserve le focus) */}
           {students.map((s,i)=>(
             <div key={s.id} style={{padding:'12px 14px', display: tab===i?'block':'none'}}>
-              <Grille student={s} setStudents={setStudents}/>
+              <Grille student={s} setStudents={setStudents} modalite={session.modalite}/>
             </div>
           ))}
         </>
