@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef, memo, Fragment } from "react"
 import { Check, ArrowLeft, Printer, RefreshCw, Save } from "lucide-react"
 
-const SECTIONS = [
+const SECTIONS_FI = [
   { id:'prev', title:'Prévention', items:[
     { id:'prv1', text:"A su repérer une situation dangereuse" },
     { id:'prv2', text:"A su faire une remontée d'information factuelle en respectant les procédures de l'entreprise" },
@@ -25,6 +25,27 @@ const SECTIONS = [
   ]},
 ]
 
+const SECTIONS_MAC = [
+  { id:'prev', title:'Prévention', items:[
+    { id:'prv1', text:"A su repérer une situation dangereuse" },
+    { id:'prv4', text:"A su faire une remontée d'information factuelle et proposer une action de prévention adaptée" },
+  ]},
+  { id:'prot', title:'Protéger', items:[
+    { id:'prt1', text:"A su mettre en œuvre une action de protection adaptée à la situation" },
+    { id:'prt2', text:"A su effectuer un dégagement d'urgence par traction de la victime" },
+  ]},
+  { id:'exam', title:'Examiner', items:[
+    { id:'exm1', text:"A su conduire le bilan de la victime dans le bon ordre (conscience → VVA → respiration)" },
+    { id:'exm2', text:"A su identifier la présence d'une urgence vitale" },
+  ]},
+  { id:'alt', title:'Faire alerter', items:[
+    { id:'alt1', text:"A su délivrer un message complet assurant l'arrivée des secours au plus près" },
+  ]},
+  { id:'sec', title:'Secourir', items:[
+    { id:'sec1', text:"A maintenu la maîtrise de ses gestes de secours" },
+  ]},
+]
+
 const CC_ITEMS = [
   { id:'cr1',  text:"A repéré le(s) danger(s) persistant(s)" },
   { id:'cr2',  text:"A su protéger" },
@@ -39,7 +60,10 @@ const CC_ITEMS = [
   { id:'cr11', text:"Hiérarchise la meilleure solution" },
 ]
 
-const ALL_IDS = SECTIONS.flatMap(s => s.items.map(i => i.id))
+const ALL_IDS = Array.from(new Set([
+  ...SECTIONS_FI.flatMap(s => s.items.map(i => i.id)),
+  ...SECTIONS_MAC.flatMap(s => s.items.map(i => i.id)),
+]))
 const CC_IDS  = CC_ITEMS.map(i => i.id)
 const E3_LBL  = { acquis:'Acquis', en_cours:'En cours', non_acquis:'Non acquis' }
 
@@ -47,6 +71,7 @@ function mkStudent(sid, n) {
   return {
     id:sid, nom:'', prenom:'', entreprise:'',
     note_role:'', note_juridique:'',
+    actu_ok: null,
     _n: n,
     items: Object.fromEntries(ALL_IDS.map(k=>[k,{v:null,c:''}])),
     cc1_s:'', cc2_s:'',
