@@ -165,8 +165,9 @@ const NoteRow = memo(function NoteRow({ field, label, value, idx, onSetField }){
 })
 
 // ─── Grille (stable callbacks par student) ────────────────────────────────
-function Grille({ student, setStudents }){
+function Grille({ student, setStudents, modalite }){
   const id = student.id
+  const SECTIONS = modalite==='MAC' ? SECTIONS_MAC : SECTIONS_FI
 
   const onSetV = useCallback((itemId, val) => {
     setStudents(p => p.map(s => s.id===id ? {...s, items:{...s.items, [itemId]:{...s.items[itemId], v: val}}} : s))
@@ -206,16 +207,33 @@ function Grille({ student, setStudents }){
 
       {/* ── Évaluations théoriques ── */}
       <div style={{border:'0.5px solid #E5E7EB',borderRadius:'8px',overflow:'hidden'}}>
-        <table style={{width:'100%',borderCollapse:'collapse'}}>
-          <thead><tr>
-            {th('Évaluations théoriques — questionnaires','',false)}
-            {th('Note /5',70,true)}
-          </tr></thead>
-          <tbody>
-            <NoteRow field="note_role"      label="Rôle du SST"     value={student.note_role}      idx={0} onSetField={onSetField}/>
-            <NoteRow field="note_juridique" label="Cadre juridique" value={student.note_juridique} idx={1} onSetField={onSetField}/>
-          </tbody>
-        </table>
+        {modalite==='FI' ? (
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>
+              {th('Évaluations théoriques — questionnaires','',false)}
+              {th('Note /5',70,true)}
+            </tr></thead>
+            <tbody>
+              <NoteRow field="note_role"      label="Rôle du SST"     value={student.note_role}      idx={0} onSetField={onSetField}/>
+              <NoteRow field="note_juridique" label="Cadre juridique" value={student.note_juridique} idx={1} onSetField={onSetField}/>
+            </tbody>
+          </table>
+        ) : (
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>
+              {th('Actualisation des connaissances','',false)}
+              {th('Acquis',50,true)}
+              {th('Non acquis',75,true)}
+            </tr></thead>
+            <tbody>
+              <tr style={{background:'#F8F9FC'}}>
+                <td style={TD_TXT}>Actualisation des connaissances validée</td>
+                <td style={TD_CTR}><CBox on={student.actu_ok==='acquis'}     sem="success" onClick={()=>onSetField('actu_ok', student.actu_ok==='acquis'?null:'acquis')}/></td>
+                <td style={TD_CTR}><CBox on={student.actu_ok==='non_acquis'} sem="danger"  onClick={()=>onSetField('actu_ok', student.actu_ok==='non_acquis'?null:'non_acquis')}/></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* ── Compétences ── */}
