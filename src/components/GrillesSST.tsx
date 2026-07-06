@@ -575,7 +575,7 @@ export default function App(){
           {/* Grilles : toutes montées, seule l'active est visible (préserve le focus) */}
           {students.map((s,i)=>(
             <div key={s.id} style={{padding:'12px 14px', display: tab===i?'block':'none'}}>
-              <Grille student={s} setStudents={setStudents}/>
+              <Grille student={s} setStudents={setStudents} modalite={session.modalite}/>
             </div>
           ))}
         </>
