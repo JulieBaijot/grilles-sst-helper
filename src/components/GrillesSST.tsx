@@ -308,6 +308,7 @@ function Grille({ student, setStudents, modalite }){
 
 // ─── Vue impression ───────────────────────────────────────────────────────
 function PrintView({ student, session, onBack }){
+  const SECTIONS = session.modalite==='MAC' ? SECTIONS_MAC : SECTIONS_FI
   const td  = {border:'0.5px solid #DDE3EE',padding:'4px 8px',fontSize:11,fontFamily:'Arial',verticalAlign:'middle'}
   const bg3 = v => v==='acquis'?'#C8E6C9':v==='en_cours'?'#FFE0B2':v==='non_acquis'?'#FFCDD2':'#F5F5F5'
   const l3  = v => v ? E3_LBL[v] : '—'
@@ -342,13 +343,26 @@ function PrintView({ student, session, onBack }){
             <th style={{...td,background:'#185FA5',color:'#E6F1FB',textAlign:'left'}}>Commentaire</th>
           </tr></thead>
           <tbody>
-            <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Évaluations théoriques</td></tr>
-            {[['Rôle du SST',student.note_role],['Cadre juridique',student.note_juridique]].map(([lbl,note],i)=>(
-              <tr key={lbl} style={{background:i%2===0?'#F8F9FC':'#FFF'}}>
-                <td style={td}>{lbl}</td><td style={{...td,textAlign:'center'}}>{note||'—'}/5</td>
-                <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
-              </tr>
-            ))}
+            {session.modalite==='FI' ? (
+              <>
+                <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Évaluations théoriques</td></tr>
+                {[['Rôle du SST',student.note_role],['Cadre juridique',student.note_juridique]].map(([lbl,note],i)=>(
+                  <tr key={lbl} style={{background:i%2===0?'#F8F9FC':'#FFF'}}>
+                    <td style={td}>{lbl}</td><td style={{...td,textAlign:'center'}}>{note||'—'}/5</td>
+                    <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
+                  </tr>
+                ))}
+              </>
+            ) : (
+              <>
+                <tr><td colSpan={6} style={{...td,background:'#185FA5',color:'#E6F1FB',fontWeight:'bold'}}>Actualisation des connaissances</td></tr>
+                <tr style={{background:'#F8F9FC'}}>
+                  <td style={td}>Actualisation des connaissances validée</td>
+                  <td style={{...td,textAlign:'center',background:bg3(student.actu_ok)}}>{student.actu_ok==='acquis'?'✓':student.actu_ok==='non_acquis'?'✗':'—'}</td>
+                  <td style={td}/><td style={td}/><td style={td}/><td style={td}/>
+                </tr>
+              </>
+            )}
             {SECTIONS.map(sec=>(
               <Fragment key={sec.id}>
                 <tr><td colSpan={6} style={{...td,background:'#6B8EC0',color:'#E6F1FB',fontWeight:'bold'}}>{sec.title}</td></tr>
