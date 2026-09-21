@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback, useRef, memo, Fragment } from "react"
-import { Check, ArrowLeft, Printer, RefreshCw, Save } from "lucide-react"
+import { Check, ArrowLeft, Printer, RefreshCw, Save, Download, Upload } from "lucide-react"
 
 const SECTIONS_FI = [
   { id:'prev', title:'Prévention', items:[
@@ -83,6 +83,33 @@ function mkSession(){ return { date:new Date().toISOString().split('T')[0], trai
 
 function tabLabel(s){ return [s.nom,s.prenom].filter(Boolean).join(' ') || `Stagiaire ${s._n}` }
 
+// ─── Persistance ──────────────────────────────────────────────────────────
+const STORAGE_KEY = 'sst-v3'
+const AUTOSAVE_DELAY = 800 // ms d'inactivité avant sauvegarde automatique
+
+const isObj = v => !!v && typeof v==='object' && !Array.isArray(v)
+const snapshot = (session, students, count) => JSON.stringify({session,students,count})
+// Texte utilisable dans un nom de fichier (accents retirés)
+const slug = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9_-]+/g,'_').replace(/^_+|_+$/g,'')
+
+// Valide et complète des données lues dans le localStorage ou dans un fichier importé.
+// Renvoie null si le contenu n'est pas une session SST exploitable.
+function normalizeState(d){
+  if(!isObj(d) || !Array.isArray(d.students)) return null
+  const session = {...mkSession(), ...(isObj(d.session) ? d.session : {})}
+  if(session.modalite!=='FI' && session.modalite!=='MAC') session.modalite = 'FI'
+  const students = d.students.filter(s=>isObj(s) && s.id).map((s,i)=>{
+    const b = mkStudent(String(s.id), i+1)
+    return {...b, ...s,
+      items:{...b.items, ...(isObj(s.items)?s.items:{})},
+      cc1:{...b.cc1, ...(isObj(s.cc1)?s.cc1:{})},
+      cc2:{...b.cc2, ...(isObj(s.cc2)?s.cc2:{})},
+    }
+  })
+  const count = Number.isInteger(d.count) && d.count>=4 && d.count<=10 ? d.count : 4
+  return { session, students, count, savedAt: typeof d.savedAt==='string' ? d.savedAt : null }
+}
+
 // ─── Styles module-level (référence stable pour React.memo) ───────────────
 const CBOX_COLORS = {
   success:{ bg:'#C8E6C9', border:'#66BB6A', check:'#1B5E20' },
@@ -96,6 +123,9 @@ const TD_CTR_LEFT = { ...TD_CTR, borderLeft:'0.5px solid #E5E7EB' }
 const TD_CTR_NOLEFT = { ...TD_CTR, borderLeft:'none' }
 const COMMENT_INPUT_STYLE = { width:'100%', fontSize:11, padding:'2px 5px', boxSizing:'border-box' }
 const NOTE_INPUT_STYLE = { width:32, textAlign:'center', fontSize:12, padding:'2px 4px' }
+const FF = 'system-ui,-apple-system,sans-serif'
+const BTN_GOLD_SM = { background:'#D9BB5F', color:'#4A3800', border:'none', borderRadius:4, padding:'5px 12px', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:FF, display:'inline-flex', alignItems:'center', gap:5 }
+const BTN_GHOST = { background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:4, padding:'8px 12px', fontSize:13, cursor:'pointer', fontFamily:FF, display:'inline-flex', alignItems:'center', gap:6 }
 
 // ─── Checkbox carré coloré ────────────────────────────────────────────────
 const CBox = memo(function CBox({ on, sem, onClick }){
@@ -307,22 +337,19 @@ function Grille({ student, setStudents, modalite }){
 }
 
 // ─── Vue impression ───────────────────────────────────────────────────────
-function PrintView({ student, session, onBack }){
+// Une page de grille (un stagiaire)
+function PrintPage({ student, session }){
   const SECTIONS = session.modalite==='MAC' ? SECTIONS_MAC : SECTIONS_FI
   const td  = {border:'0.5px solid #DDE3EE',padding:'4px 8px',fontSize:11,fontFamily:'Arial',verticalAlign:'middle'}
   const bg3 = v => v==='acquis'?'#C8E6C9':v==='en_cours'?'#FFE0B2':v==='non_acquis'?'#FFCDD2':'#F5F5F5'
   const l3  = v => v ? E3_LBL[v] : '—'
-  const fmt = d => { try{ return new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) }catch(e){return d} }
+  const fmt = d => {
+    if(!d) return '—'
+    const dt = new Date(d+'T12:00:00')
+    return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})
+  }
   return (
-    <div>
-      <div className="no-print" style={{padding:'10px 16px',background:'#F8F9FC',borderBottom:'0.5px solid #E5E7EB',display:'flex',gap:10,alignItems:'center'}}>
-        <button onClick={onBack} style={{fontSize:12,fontFamily:'system-ui,-apple-system,sans-serif'}}><ArrowLeft size={14}/> Retour</button>
-        <button onClick={()=>window.print()} style={{background:'#D9BB5F',color:'#4A3800',border:'none',borderRadius:'4px',padding:'6px 14px',fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-          <Printer size={14}/> Imprimer / Exporter en PDF
-        </button>
-        <span style={{fontSize:11,color:'#6B7280',fontFamily:'system-ui,-apple-system,sans-serif'}}>Dans la boîte d'impression → "Enregistrer en PDF"</span>
-      </div>
-      <div style={{padding:20,maxWidth:860,margin:'0 auto',fontFamily:'Arial,sans-serif',color:'#1A1A2E'}}>
+      <div className="print-page" style={{padding:20,maxWidth:860,margin:'0 auto',fontFamily:'Arial,sans-serif',color:'#1A1A2E'}}>
         <div style={{background:'#185FA5',color:'#E6F1FB',padding:'7px 12px',fontSize:12,fontWeight:'bold',borderRadius:'4px 4px 0 0'}}>
           Grille d'évaluation SST — {session.modalite}
         </div>
@@ -420,7 +447,47 @@ function PrintView({ student, session, onBack }){
           <span>Signature stagiaire : ________________________________</span>
         </div>
       </div>
-      <style>{`@media print{.no-print{display:none!important;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`}</style>
+  )
+}
+
+// Toutes les grilles à imprimer, une page A4 par stagiaire, en un seul PDF
+function PrintView({ students, session, onBack }){
+  const n = students.length
+
+  // Le navigateur propose le titre de la page comme nom de fichier PDF
+  useEffect(()=>{
+    const prev = document.title
+    const who = n===1 ? slug(tabLabel(students[0])) : `${n}_stagiaires`
+    document.title = ['SST', session.modalite, session.date, who].filter(Boolean).join('_')
+    return ()=>{ document.title = prev }
+  },[students, session.modalite, session.date, n])
+
+  const css = `
+    @page{size:A4 portrait;margin:10mm}
+    @media screen{.print-page+.print-page{border-top:2px dashed #C7CDD8}}
+    @media print{
+      .no-print{display:none!important}
+      body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .print-page{padding:0!important;max-width:none!important;break-after:page;page-break-after:always}
+      .print-page:last-child{break-after:auto;page-break-after:auto}
+      .print-page tr{break-inside:avoid;page-break-inside:avoid}
+    }`
+
+  return (
+    <div>
+      <div className="no-print" style={{padding:'10px 16px',background:'#F8F9FC',borderBottom:'0.5px solid #E5E7EB',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <button onClick={onBack} style={{fontSize:12,fontFamily:FF}}><ArrowLeft size={14}/> Retour</button>
+        <button onClick={()=>window.print()} style={{background:'#D9BB5F',color:'#4A3800',border:'none',borderRadius:'4px',padding:'6px 14px',fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:FF}}>
+          <Printer size={14}/> {n>1 ? `Imprimer / Exporter les ${n} grilles en PDF` : 'Imprimer / Exporter en PDF'}
+        </button>
+        <span style={{fontSize:11,color:'#6B7280',fontFamily:FF}}>
+          {n>1 ? 'Une page par stagiaire, dans un seul fichier. ' : ''}Dans la boîte d'impression → "Enregistrer en PDF"
+        </span>
+      </div>
+      <div>
+        {students.map(s=><PrintPage key={s.id} student={s} session={session}/>)}
+      </div>
+      <style>{css}</style>
     </div>
   )
 }
@@ -432,42 +499,80 @@ export default function App(){
   const [tab,      setTab]      = useState(0)
   const [count,    setCount]    = useState(4)
   const [ready,    setReady]    = useState(false)
-  const [printing, setPrinting] = useState(false)
+  const [printing, setPrinting] = useState(null) // null | 'one' | 'all'
   const [dirty,    setDirty]    = useState(false)
   const [savedAt,  setSavedAt]  = useState(null)
+  const [saveError, setSaveError] = useState(false)
+  const fileRef = useRef(null)
+
+  // Garde toujours l'état le plus récent en mémoire
+  const latestRef = useRef({session,students,count})
+  latestRef.current = {session,students,count}
+  // Contenu (sérialisé) du dernier enregistrement ; null tant que le chargement initial n'est pas fait
+  const lastSavedRef = useRef(null)
 
   // Charge l'état initial
   useEffect(()=>{
+    let loaded = null
     try{
-      const raw=localStorage.getItem('sst-v3')
-      if(raw){const d=JSON.parse(raw);setSession(d.session);setStudents(d.students);setCount(d.count||4);if(d.savedAt)setSavedAt(d.savedAt)}
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if(raw){
+        try{ loaded = normalizeState(JSON.parse(raw)) }catch(e){}
+        if(loaded){
+          setSession(loaded.session); setStudents(loaded.students); setCount(loaded.count); setSavedAt(loaded.savedAt)
+        } else {
+          // Données illisibles : on les met de côté plutôt que de les écraser
+          localStorage.setItem(STORAGE_KEY+'-illisible', raw)
+        }
+      }
     }catch(e){}
+    const base = loaded || latestRef.current
+    lastSavedRef.current = snapshot(base.session, base.students, base.count)
     setReady(true)
   },[])
 
-  // Garde toujours l'état le plus récent en mémoire
-  const latestRef = useRef({session,students,count,savedAt})
-  latestRef.current = {session,students,count,savedAt}
-
-  // Marque "modifié" dès qu'une donnée change
-  useEffect(()=>{ if(ready) setDirty(true) },[session,students,count])
-
-  // Sauvegarde manuelle
+  // Enregistre l'état courant (appelé par le minuteur, Ctrl+S, le bouton, et à la fermeture)
   const save = useCallback(()=>{
+    if(lastSavedRef.current===null) return
+    const {session,students,count} = latestRef.current
     const now = new Date().toISOString()
     try{
-      localStorage.setItem('sst-v3', JSON.stringify({...latestRef.current, savedAt: now}))
-      setSavedAt(now); setDirty(false)
-    }catch(e){}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({session,students,count,savedAt:now}))
+      lastSavedRef.current = snapshot(session,students,count)
+      setSavedAt(now); setDirty(false); setSaveError(false)
+    }catch(e){ setSaveError(true) }
   },[])
 
-  // Avertir avant de quitter si modifications non enregistrées
+  // Sauvegarde automatique : dès qu'une donnée diffère du dernier enregistrement,
+  // on enregistre après une courte pause de saisie
   useEffect(()=>{
-    if(!dirty) return
-    const h = (e)=>{ e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', h)
-    return ()=>window.removeEventListener('beforeunload', h)
-  },[dirty])
+    if(!ready) return
+    if(snapshot(session,students,count)===lastSavedRef.current){ setDirty(false); return }
+    setDirty(true)
+    const t = setTimeout(save, AUTOSAVE_DELAY)
+    return ()=>clearTimeout(t)
+  },[ready,session,students,count,save])
+
+  // À la fermeture / mise en arrière-plan : enregistre tout de suite ;
+  // n'avertit l'utilisateur que si l'enregistrement a échoué
+  useEffect(()=>{
+    const isDirty = ()=>{
+      const {session,students,count} = latestRef.current
+      return lastSavedRef.current!==null && snapshot(session,students,count)!==lastSavedRef.current
+    }
+    const onBeforeUnload = (e)=>{
+      if(!isDirty()) return
+      save()
+      if(isDirty()){ e.preventDefault(); e.returnValue = '' }
+    }
+    const onHide = ()=>{ if(document.visibilityState==='hidden' && isDirty()) save() }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    document.addEventListener('visibilitychange', onHide)
+    return ()=>{
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  },[save])
 
   // Raccourci Ctrl/Cmd+S
   useEffect(()=>{
@@ -483,11 +588,36 @@ export default function App(){
   const upd = (id,fn) => setStudents(p=>p.map(s=>s.id===id?fn(s):s))
   const student = students[tab]||null
 
+  // Sauvegarde de la session dans un fichier .json (copie de secours / transfert vers un autre poste)
+  const exportJSON = () => {
+    const payload = { app:'grilles-sst-helper', version:3, exportedAt:new Date().toISOString(), session, students, count }
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'})
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = ['Session_SST', session.modalite, session.date, slug(session.trainer)].filter(Boolean).join('_') + '.json'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000)
+  }
+
+  // Restaure une session depuis un fichier .json exporté
+  const importJSON = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = '' // permet de re-choisir le même fichier
+    if(!file) return
+    let d = null
+    try{ d = normalizeState(JSON.parse(await file.text())) }catch(err){}
+    if(!d){ alert("Ce fichier n'est pas une session SST valide."); return }
+    if(students.length>0 && !confirm(`Remplacer la session en cours par « ${file.name} » (${d.students.length} stagiaires) ?\nLes données actuelles seront écrasées.`)) return
+    setSession(d.session); setStudents(d.students); setCount(d.count); setTab(0)
+  }
+
   if(!ready) return <div style={{padding:'2rem',fontFamily:'system-ui,-apple-system,sans-serif',color:'#6B7280',fontSize:13}}>Chargement...</div>
-  if(printing&&student) return <PrintView student={student} session={session} onBack={()=>setPrinting(false)}/>
+  const printList = printing==='all' ? students : (student ? [student] : [])
+  if(printing&&printList.length) return <PrintView students={printList} session={session} onBack={()=>setPrinting(null)}/>
 
   return (
     <div>
+      <input ref={fileRef} type="file" accept=".json,application/json" onChange={importJSON} style={{display:'none'}}/>
       {/* Barre session */}
       {(() => {
         const FF = 'system-ui,-apple-system,sans-serif'
@@ -520,27 +650,32 @@ export default function App(){
                 style={{background:session.trainer?'#D9BB5F':'rgba(255,255,255,0.2)',color:session.trainer?'#4A3800':'#E6F1FB',border:'none',borderRadius:4,padding:'8px 16px',fontSize:14,fontWeight:600,cursor:session.trainer?'pointer':'default',fontFamily:FF}}>
                 Démarrer
               </button>
+              <button onClick={()=>fileRef.current && fileRef.current.click()} title="Reprendre une session depuis un fichier .json exporté" style={{...BTN_GHOST,marginLeft:'auto'}}>
+                <Upload size={15}/> Importer
+              </button>
             </>
           ):(
             <>
-            <div style={{marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:10}}>
-              <span style={{color:'#E6F1FB',fontSize:12,fontFamily:FF}}>
-                {dirty ? '● Modifications non enregistrées' : (savedLabel ? `Enregistré à ${savedLabel}` : '')}
+            <div style={{marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              <span style={{color:saveError?'#FFCDD2':'#E6F1FB',fontSize:12,fontFamily:FF}}>
+                {saveError ? "⚠ Échec de l'enregistrement — utilisez « Exporter »" : dirty ? '● Enregistrement…' : (savedLabel ? `Enregistré à ${savedLabel}` : '')}
               </span>
               <button onClick={save} disabled={!dirty}
                 title="Enregistrer (Ctrl+S)"
                 style={{background:dirty?'#D9BB5F':'rgba(255,255,255,0.15)',color:dirty?'#4A3800':'#E6F1FB',border:'none',borderRadius:4,padding:'8px 14px',fontSize:13,fontWeight:600,cursor:dirty?'pointer':'default',display:'inline-flex',alignItems:'center',gap:6,fontFamily:FF}}>
                 <Save size={15}/> {dirty ? 'Enregistrer' : 'Enregistré'}
               </button>
+              <button onClick={exportJSON} title="Télécharger la session dans un fichier .json" style={BTN_GHOST}>
+                <Download size={15}/> Exporter
+              </button>
+              <button onClick={()=>fileRef.current && fileRef.current.click()} title="Reprendre une session depuis un fichier .json exporté" style={BTN_GHOST}>
+                <Upload size={15}/> Importer
+              </button>
               <button onClick={()=>{
-                if(confirm('Réinitialiser toute la session ? Les évaluations de tous les stagiaires seront effacées.')){
-                  const fresh=mkSession()
-                  setSession(fresh); setStudents([]); setCount(4); setTab(0); setSavedAt(null)
-                  localStorage.setItem('sst-v3',JSON.stringify({session:fresh,students:[],count:4}))
-                  setDirty(false)
+                if(confirm('Réinitialiser toute la session ? Les évaluations de tous les stagiaires seront effacées.\n\nUtilisez « Exporter » avant si vous voulez en garder une copie.')){
+                  setSession(mkSession()); setStudents([]); setCount(4); setTab(0); setSavedAt(null)
                 }
-              }}
-                style={{background:'rgba(255,255,255,0.15)',color:'#fff',border:'1px solid rgba(255,255,255,0.3)',borderRadius:4,padding:'8px 12px',fontSize:13,cursor:'pointer',fontFamily:FF,display:'inline-flex',alignItems:'center',gap:6}}>
+              }} style={BTN_GHOST}>
                 <RefreshCw size={15}/> Nouvelle session
               </button>
             </div>
@@ -575,9 +710,11 @@ export default function App(){
                 placeholder={ph} style={{fontSize:12,padding:'4px 8px',width:w}}/>
             ))}
             <div style={{marginLeft:'auto',display:'flex',gap:6}}>
-              <button onClick={()=>setPrinting(true)}
-                style={{background:'#D9BB5F',color:'#4A3800',border:'none',borderRadius:'4px',padding:'5px 12px',fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'system-ui,-apple-system,sans-serif'}}>
-                <Printer size={14}/> PDF
+              <button onClick={()=>setPrinting('one')} title="Grille du stagiaire affiché" style={BTN_GOLD_SM}>
+                <Printer size={14}/> PDF stagiaire
+              </button>
+              <button onClick={()=>setPrinting('all')} title="Toutes les grilles dans un seul PDF, une page par stagiaire" style={BTN_GOLD_SM}>
+                <Printer size={14}/> PDF tous ({students.length})
               </button>
               <button onClick={()=>{if(confirm('Remettre à zéro ce stagiaire ?')) upd(student.id,s=>({...mkStudent(s.id,s._n),nom:s.nom,prenom:s.prenom,entreprise:s.entreprise}))}}
                 style={{background:'none',border:'0.5px solid #D1D5DB',borderRadius:'4px',padding:'5px 8px',fontSize:11,cursor:'pointer',color:'#6B7280',fontFamily:'system-ui,-apple-system,sans-serif'}}>
